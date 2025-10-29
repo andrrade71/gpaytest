@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>POC GPay + Cielo</title>
+  <script async src="https://pay.google.com/gp/p/js/pay.js"></script>
+  <style>
+    body{font-family:system-ui,Arial;padding:18px}
+    #btn{margin-top:14px}
+    pre{white-space:pre-wrap;font-size:13px;color:#333}
+  </style>
+</head>
+<body>
+  <h3>Google Pay (TEST) — POC DPAN / Débito</h3>
+  <div id="btn"></div>
+  <pre id="log"></pre>
+
+<script>
+(async () => {
+  function log(m){document.getElementById('log').textContent += (document.getElementById('log').textContent? '\\n' : '') + m}
+
+  // --- parâmetros via query string (backend, gatewayMerchantId, returnUrl)
+  const params = new URLSearchParams(location.search);
+  const BACKEND = params.get("backend") || "https://SEU_BACKEND.com";
+  const GWMID = params.get("gatewayMerchantId") || "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX";
+  const RETURN_URL = params.get("return") || "myapp://gpay/retorno";
+
+  const paymentsClient = new google.payments.api.PaymentsClient({ environment: "TEST" });
+
+  const tokenizationSpecification = {
+    type: "PAYMENT_GATEWAY",
+    parameters: {
+      gateway: "cielo",
+      gatewayMerchantId: GWMID
+    }
+  };
+
+  const baseCardPaymentMethod = {
+    type: 'CARD',
+    parameters: {
+      allowedAuthMethods: ['CRYPTOGRAM_3DS'], // focar DPAN
+      allowedCardNetworks: ['VISA','MASTERCARD','AMEX','ELO'],
+      billingAddressRequired: false
+    }
+  };
+
+  const cardPaymentMethod = Object.assign({}, baseCardPaymentMethod, { tokenizationSpecification });
+
+  const isReadyToPayRequest = {
+    apiVersion: 2,
+    apiVersionMinor: 0,
+    allowedPaymentMethods: [baseCardPaymentMethod]
+  };
+
+  const paymentDataRequest = {
+    apiVersion: 2,
+    apiVersionMinor: 0,
+    allowedPaymentMethods: [cardPaymentMethod],
+    merchantInfo: { merchantName: "POC GPay + Cielo" },
+    transactionInfo: { totalPriceStatus: "FINAL", totalPrice: "15.70", currencyCode: "BRL" }
+  };
+
+  function createButton() {
+    const btn = paymentsClient.createButton({ onClick: onClick, buttonType: "buy", buttonColor: "black" });
+    document.getElementById('btn').appendChild(btn);
+  }
+
+  async function onClick() {
+    try {
+      const paymentData = await paymentsClient.loadPaymentData(paymentDataRequest);
+      const token = paymentData?.paymentMethodData?.tokenizationData?.token;
+      if (!token) throw new Error("NO_TOKEN");
+      log("Token recebido. Enviando para backend...");
+      const r = await fetch(`${BACKEND}/gpay/debit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          GooglePayToken: token,
+          Amount: 1570,
+          OrderId: "POC-GPAY-WEB-001",
+          CustomerName: "Cliente POC",
+          SoftDescriptor: "POC LOJA"
+        })
+      });
+      const j = await r.json();
+      log("Resposta backend: " + JSON.stringify(j));
+      const paymentId = j?.PaymentId || j?.Payment?.PaymentId || "";
+      // redireciona de volta para o app com status e paymentId
+      location.href = `${RETURN_URL}?status=${r.ok? 'approved' : 'error'}&paymentId=${encodeURIComponent(paymentId)}`;
+    } catch (err) {
+      log("Erro: " + (err.message || err));
+      location.href = `${RETURN_URL}?status=error&reason=${encodeURIComponent(String(err.message||err))}`;
+    }
+  }
+
+  try {
+    const ready = await paymentsClient.isReadyToPay(isReadyToPayRequest);
+    if (ready && ready.result) createButton();
+    else log("Google Pay não disponível para esse usuário/dispositivo.");
+  } catch (err) {
+    log("isReadyToPay falhou: " + err);
+  }
+})();
+</script>
+</body>
+</html>
