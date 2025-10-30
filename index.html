@@ -127,7 +127,9 @@
       }
 
       const __timings = {};
-      function mark(name) { __timings[name] = Date.now(); }
+      function mark(name) {
+        __timings[name] = Date.now();
+      }
       function elapsed(startName) {
         if (!__timings[startName]) return null;
         return Date.now() - __timings[startName];
@@ -164,9 +166,13 @@
 
         try {
           log("➡️ isReadyToPay request:", request, "info");
-          mark('isReadyToPay');
+          mark("isReadyToPay");
           const res = await paymentsClient.isReadyToPay(request);
-          log(`⏱ isReadyToPay elapsed: ${elapsed('isReadyToPay')}ms`, null, "info");
+          log(
+            `⏱ isReadyToPay elapsed: ${elapsed("isReadyToPay")}ms`,
+            null,
+            "info"
+          );
           if (res.result) {
             log("✅ Google Pay disponível no dispositivo.", null, "success");
             document.getElementById("payButton").disabled = false;
@@ -217,20 +223,34 @@
         };
 
         try {
-          log("➡️ Chamando paymentsClient.loadPaymentData com:", paymentDataRequest, "info");
-          mark('loadPaymentData');
+          log(
+            "➡️ Chamando paymentsClient.loadPaymentData com:",
+            paymentDataRequest,
+            "info"
+          );
+          mark("loadPaymentData");
           const paymentData = await paymentsClient.loadPaymentData(
             paymentDataRequest
           );
-          log(`⏱ loadPaymentData elapsed: ${elapsed('loadPaymentData')}ms`, null, "info");
+          log(
+            `⏱ loadPaymentData elapsed: ${elapsed("loadPaymentData")}ms`,
+            null,
+            "info"
+          );
           const gpayToken =
             paymentData?.paymentMethodData?.tokenizationData?.token;
-          log("✅ PaymentData recebido (token mascarado):", {
-            paymentMethodData: paymentData?.paymentMethodData ? {
-              description: paymentData.paymentMethodData.description,
-              tokenPreview: maskToken(gpayToken)
-            } : null
-          }, "success");
+          log(
+            "✅ PaymentData recebido (token mascarado):",
+            {
+              paymentMethodData: paymentData?.paymentMethodData
+                ? {
+                    description: paymentData.paymentMethodData.description,
+                    tokenPreview: maskToken(gpayToken),
+                  }
+                : null,
+            },
+            "success"
+          );
           if (!gpayToken) throw new Error("NO_TOKEN");
 
           // Chamar o endpoint /gpay/debit com o payload esperado
@@ -246,9 +266,13 @@
             }),
           });
 
-          mark('fetch');
+          mark("fetch");
           const result = await res.json();
-          log(`⏱ fetch elapsed: ${elapsed('fetch')}ms`, { status: res.status, ok: res.ok }, "info");
+          log(
+            `⏱ fetch elapsed: ${elapsed("fetch")}ms`,
+            { status: res.status, ok: res.ok },
+            "info"
+          );
           log("📦 Resposta do backend:", result, res.ok ? "success" : "error");
 
           if (!res.ok) {
@@ -266,7 +290,7 @@
             status
           )}&paymentId=${encodeURIComponent(paymentId)}`;
 
-    log("Redirecionando para o App: " + finalUrl, null, "info");
+          log("Redirecionando para o App: " + finalUrl, null, "info");
           window.location.href = finalUrl;
         } catch (err) {
           if (err && err.statusCode) {
