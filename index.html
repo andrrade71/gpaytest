@@ -1,141 +1,180 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>POC GPay + Cielo</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Google Pay (TEST) — POC Cielo</title>
     <script async src="https://pay.google.com/gp/p/js/pay.js"></script>
     <style>
       body {
-        font-family: system-ui, Arial;
-        padding: 18px;
+        font-family: Arial, sans-serif;
+        background: #f9fafb;
+        color: #222;
+        margin: 0;
+        padding: 20px;
       }
-      #btn {
-        margin-top: 14px;
+
+      h1 {
+        text-align: center;
+        color: #202124;
       }
-      pre {
+
+      #payButton {
+        display: block;
+        margin: 30px auto;
+        background: #000;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 18px;
+        padding: 15px 30px;
+        cursor: pointer;
+        transition: background 0.3s;
+      }
+      #payButton:hover {
+        background: #333;
+      }
+
+      #logContainer {
+        margin-top: 20px;
+        padding: 15px;
+        border: 1px solid #ccc;
+        background: #fff;
+        height: 250px;
+        overflow-y: auto;
+        font-family: monospace;
         white-space: pre-wrap;
-        font-size: 13px;
-        color: #333;
+      }
+
+      #logContainer p {
+        margin: 0;
+        padding: 2px 0;
       }
     </style>
   </head>
   <body>
-    <h3>Google Pay (TEST) — POC DPAN / Débito</h3>
-    <div id="btn"></div>
-    <pre id="log"></pre>
+    <h1>Google Pay (TEST)</h1>
+    <button id="payButton">💳 Pagar com Google Pay</button>
+
+    <div id="logContainer"></div>
 
     <script>
-      (async () => {
-        function log(m) {
-          document.getElementById("log").textContent +=
-            (document.getElementById("log").textContent ? "\\n" : "") + m;
-        }
+      const params = new URLSearchParams(location.search);
+      const BACKEND =
+        params.get("backend") || "https://gpaytest-back.onrender.com";
+      const GWMID =
+        params.get("gatewayMerchantId") ||
+        "bf8c9702-6aea-4ed1-b856-3b17761263c0";
+      const RETURN_URL = params.get("return") || "myapp://gpay/retorno";
 
-        // --- parâmetros via query string (backend, gatewayMerchantId, returnUrl)
-        const params = new URLSearchParams(location.search);
-        const BACKEND =
-          params.get("backend") || "https://gpaytest-back.onrender.com";
-        const GWMID =
-          params.get("gatewayMerchantId") ||
-          "bf8c9702-6aea-4ed1-b856-3b17761263c0";
-        const RETURN_URL = params.get("return") || "myapp://gpay/retorno";
+      const log = (msg, data = null) => {
+        const container = document.getElementById("logContainer");
+        const entry = document.createElement("p");
+        const now = new Date().toLocaleTimeString();
+        entry.textContent = `[${now}] ${msg}`;
+        if (data) entry.textContent += " " + JSON.stringify(data, null, 2);
+        container.appendChild(entry);
+        container.scrollTop = container.scrollHeight;
+        console.log(msg, data);
+      };
 
-        const paymentsClient = new google.payments.api.PaymentsClient({
-          environment: "TEST",
-        });
+      // ---------- CONFIG DO GOOGLE PAY ----------
+      const baseRequest = {
+        apiVersion: 2,
+        apiVersionMinor: 0,
+      };
 
-        const tokenizationSpecification = {
-          type: "PAYMENT_GATEWAY",
-          parameters: {
-            gateway: "cielo",
-            gatewayMerchantId: GWMID,
-          },
-        };
+      const allowedCardNetworks = ["VISA", "MASTERCARD"];
+      const allowedCardAuthMethods = ["PAN_ONLY", "CRYPTOGRAM_3DS"];
 
-        const baseCardPaymentMethod = {
-          type: "CARD",
-          parameters: {
-            allowedAuthMethods: ["CRYPTOGRAM_3DS"], // focar DPAN
-            allowedCardNetworks: ["VISA", "MASTERCARD", "AMEX", "ELO"],
-            billingAddressRequired: false,
-          },
-        };
+      const tokenizationSpecification = {
+        type: "PAYMENT_GATEWAY",
+        parameters: {
+          gateway: "cielo",
+          gatewayMerchantId: GWMID,
+        },
+      };
 
-        const cardPaymentMethod = Object.assign({}, baseCardPaymentMethod, {
-          tokenizationSpecification,
-        });
+      const baseCardPaymentMethod = {
+        type: "CARD",
+        parameters: {
+          allowedAuthMethods: allowedCardAuthMethods,
+          allowedCardNetworks: allowedCardNetworks,
+        },
+      };
 
-        const isReadyToPayRequest = {
-          apiVersion: 2,
-          apiVersionMinor: 0,
-          allowedPaymentMethods: [baseCardPaymentMethod],
-        };
+      const cardPaymentMethod = Object.assign(
+        { tokenizationSpecification: tokenizationSpecification },
+        baseCardPaymentMethod
+      );
 
-        const paymentDataRequest = {
-          apiVersion: 2,
-          apiVersionMinor: 0,
-          allowedPaymentMethods: [cardPaymentMethod],
-          merchantInfo: { merchantName: "POC GPay + Cielo" },
-          transactionInfo: {
-            totalPriceStatus: "FINAL",
-            totalPrice: "15.70",
-            currencyCode: "BRL",
-          },
-        };
+      const paymentsClient = new google.payments.api.PaymentsClient({
+        environment: "TEST",
+      });
 
-        function createButton() {
-          const btn = paymentsClient.createButton({
-            onClick: onClick,
-            buttonType: "buy",
-            buttonColor: "black",
-          });
-          document.getElementById("btn").appendChild(btn);
-        }
-
-        async function onClick() {
-          try {
-            const paymentData = await paymentsClient.loadPaymentData(
-              paymentDataRequest
-            );
-            const token =
-              paymentData?.paymentMethodData?.tokenizationData?.token;
-            if (!token) throw new Error("NO_TOKEN");
-            log("Token recebido. Enviando para backend...");
-            const r = await fetch(`${BACKEND}/gpay/debit`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                GooglePayToken: token,
-                Amount: 1570,
-                OrderId: "POC-GPAY-WEB-001",
-                CustomerName: "Cliente POC",
-                SoftDescriptor: "POC LOJA",
-              }),
-            });
-            const j = await r.json();
-            log("Resposta backend: " + JSON.stringify(j));
-            const paymentId = j?.PaymentId || j?.Payment?.PaymentId || "";
-            // redireciona de volta para o app com status e paymentId
-            location.href = `${RETURN_URL}?status=${
-              r.ok ? "approved" : "error"
-            }&paymentId=${encodeURIComponent(paymentId)}`;
-          } catch (err) {
-            log("Erro: " + (err.message || err));
-            location.href = `${RETURN_URL}?status=error&reason=${encodeURIComponent(
-              String(err.message || err)
-            )}`;
+      async function onGooglePayLoaded() {
+        const isReadyToPayRequest = Object.assign({}, baseRequest);
+        isReadyToPayRequest.allowedPaymentMethods = [baseCardPaymentMethod];
+        try {
+          const response = await paymentsClient.isReadyToPay(
+            isReadyToPayRequest
+          );
+          if (response.result) {
+            log("✅ Google Pay disponível neste dispositivo.");
+          } else {
+            log("⚠️ Google Pay não está disponível.");
           }
+        } catch (err) {
+          log("❌ Erro no isReadyToPay:", err);
         }
+      }
+
+      onGooglePayLoaded();
+
+      document
+        .getElementById("payButton")
+        .addEventListener("click", onBuyClicked);
+
+      async function onBuyClicked() {
+        log("🟢 Iniciando fluxo de pagamento...");
+
+        const paymentDataRequest = Object.assign({}, baseRequest);
+        paymentDataRequest.allowedPaymentMethods = [cardPaymentMethod];
+        paymentDataRequest.transactionInfo = {
+          totalPriceStatus: "FINAL",
+          totalPrice: "1.00",
+          currencyCode: "BRL",
+          countryCode: "BR",
+        };
+        paymentDataRequest.merchantInfo = {
+          merchantName: "POC Cielo GPay",
+        };
 
         try {
-          const ready = await paymentsClient.isReadyToPay(isReadyToPayRequest);
-          if (ready && ready.result) createButton();
-          else log("Google Pay não disponível para esse usuário/dispositivo.");
+          const paymentData = await paymentsClient.loadPaymentData(
+            paymentDataRequest
+          );
+          log("✅ PaymentData recebido:", paymentData);
+
+          // Envia para o backend
+          const res = await fetch(`${BACKEND}/process-payment`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(paymentData),
+          });
+
+          const result = await res.json();
+          log("📦 Resposta do backend:", result);
+
+          window.location.href = RETURN_URL;
         } catch (err) {
-          log("isReadyToPay falhou: " + err);
+          if (err.statusCode) {
+            log(`⚠️ Usuário cancelou (${err.statusCode})`);
+          } else {
+            log("❌ Erro ao processar pagamento:", err);
+          }
         }
-      })();
+      }
     </script>
   </body>
 </html>
