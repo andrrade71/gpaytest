@@ -86,10 +86,11 @@
     <script>
       // Lê parâmetros via query string
       const params = new URLSearchParams(location.search);
-      const BACKEND = params.get("backend") || "https://SEU_BACKEND.com";
+      const BACKEND =
+        params.get("backend") || "https://gpaytest-back.onrender.com";
       const GWMID =
         params.get("gatewayMerchantId") ||
-        "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX";
+        "bf8c9702-6aea-4ed1-b856-3b17761263c0";
       const RETURN_URL = params.get("return") || "myapp://gpay/retorno";
 
       // Log visual + console
