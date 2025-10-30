@@ -107,6 +107,32 @@
         console.log(message, data || "");
       }
 
+      // --- ADICIONE ESTA LINHA ---
+      log("🔵 Backend URL definida:", BACKEND, "info");
+      // -------------------------
+
+      // Log mais detalhado de parâmetros
+      log("🔎 Parâmetros iniciais:", { BACKEND, GWMID, RETURN_URL }, "info");
+
+      // Helpers de debug
+      function maskToken(t) {
+        try {
+          if (!t) return "N/A";
+          const len = t.length || 0;
+          if (len <= 30) return t;
+          return `${t.slice(0, 10)}…(${len})…${t.slice(-10)}`;
+        } catch (e) {
+          return "(mask-error)";
+        }
+      }
+
+      const __timings = {};
+      function mark(name) { __timings[name] = Date.now(); }
+      function elapsed(startName) {
+        if (!__timings[startName]) return null;
+        return Date.now() - __timings[startName];
+      }
+
       let paymentsClient = null;
 
       function initGooglePay() {
@@ -137,7 +163,10 @@
         };
 
         try {
+          log("➡️ isReadyToPay request:", request, "info");
+          mark('isReadyToPay');
           const res = await paymentsClient.isReadyToPay(request);
+          log(`⏱ isReadyToPay elapsed: ${elapsed('isReadyToPay')}ms`, null, "info");
           if (res.result) {
             log("✅ Google Pay disponível no dispositivo.", null, "success");
             document.getElementById("payButton").disabled = false;
@@ -188,17 +217,20 @@
         };
 
         try {
+          log("➡️ Chamando paymentsClient.loadPaymentData com:", paymentDataRequest, "info");
+          mark('loadPaymentData');
           const paymentData = await paymentsClient.loadPaymentData(
             paymentDataRequest
           );
-          log(
-            "✅ PaymentData recebido. Enviando para o backend...",
-            paymentData,
-            "success"
-          );
-
+          log(`⏱ loadPaymentData elapsed: ${elapsed('loadPaymentData')}ms`, null, "info");
           const gpayToken =
             paymentData?.paymentMethodData?.tokenizationData?.token;
+          log("✅ PaymentData recebido (token mascarado):", {
+            paymentMethodData: paymentData?.paymentMethodData ? {
+              description: paymentData.paymentMethodData.description,
+              tokenPreview: maskToken(gpayToken)
+            } : null
+          }, "success");
           if (!gpayToken) throw new Error("NO_TOKEN");
 
           // Chamar o endpoint /gpay/debit com o payload esperado
@@ -214,8 +246,10 @@
             }),
           });
 
+          mark('fetch');
           const result = await res.json();
-          log("📦 Resposta do backend:", result, "success");
+          log(`⏱ fetch elapsed: ${elapsed('fetch')}ms`, { status: res.status, ok: res.ok }, "info");
+          log("📦 Resposta do backend:", result, res.ok ? "success" : "error");
 
           if (!res.ok) {
             throw new Error(
@@ -232,15 +266,25 @@
             status
           )}&paymentId=${encodeURIComponent(paymentId)}`;
 
-          log("Redirecionando para o App: " + finalUrl);
+    log("Redirecionando para o App: " + finalUrl, null, "info");
           window.location.href = finalUrl;
         } catch (err) {
           if (err && err.statusCode) {
             log(`⚠️ Usuário cancelou (${err.statusCode})`, null, "error");
           } else {
-            log("❌ Erro ao processar pagamento:", err, "error");
+            log(
+              "❌ Erro ao processar pagamento:",
+              {
+                name: err?.name || "Error",
+                message: err?.message || String(err),
+                stack: err?.stack
+                  ? err.stack.split("\n")[1] || err.stack
+                  : "N/A",
+              },
+              "error"
+            );
             const finalUrl = `${RETURN_URL}?status=ERROR&error=${encodeURIComponent(
-              err.message || String(err)
+              err?.message || String(err)
             )}`;
             window.location.href = finalUrl;
           }
